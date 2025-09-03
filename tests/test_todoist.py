@@ -83,3 +83,31 @@ def test_client_rest_fallback(monkeypatch):
     assert items[0]["name"] == "Inbox"
     assert client.last_backend() in {"rest", "sdk"}
 
+
+def test_list_projects_rest_error(monkeypatch):
+    # Disable SDK to force REST
+    monkeypatch.setenv("GT_DISABLE_TODOIST_SDK", "1")
+
+    class Resp:
+        def __init__(self, status_code=401, text="forbidden"):
+            self.status_code = status_code
+            self.text = text
+
+        def json(self):
+            return []
+
+    import requests  # type: ignore
+
+    monkeypatch.setattr(requests, "get", lambda *a, **k: Resp())
+    client = td.TodoistClient()
+    try:
+        client.list_projects()
+        assert False
+    except RuntimeError as e:
+        assert "Todoist API error" in str(e)
+
+
+def test_last_backend_default_rest(monkeypatch):
+    monkeypatch.setenv("GT_DISABLE_TODOIST_SDK", "1")
+    client = td.TodoistClient()
+    assert client.last_backend() in {"rest", "sdk"}

@@ -29,3 +29,36 @@ def test_fetch_issue(monkeypatch, completed):
     assert issue.html_url.endswith("/1")
     assert issue.labels == ["bug"]
 
+
+def test_resolve_repo_error(monkeypatch, completed):
+    def bad_run(args):
+        return completed(stdout="", stderr="boom", returncode=1)
+
+    monkeypatch.setattr(gh, "run_gh", bad_run)
+    try:
+        gh.resolve_repo(None)
+        assert False, "expected error"
+    except RuntimeError as e:
+        assert "boom" in str(e)
+
+
+def test_fetch_issue_errors(monkeypatch, completed):
+    # Non-zero exit
+    monkeypatch.setattr(gh, "run_gh", lambda args: completed(stdout="", stderr="nope", returncode=1))
+    try:
+        gh.fetch_issue("a/b", 1)
+        assert False
+    except RuntimeError as e:
+        assert "nope" in str(e)
+
+    # Missing mandatory fields
+    def missing_fields(args):
+        data = {"body": "b", "labels": []}  # no title/html_url
+        return completed(stdout=json.dumps(data))
+
+    monkeypatch.setattr(gh, "run_gh", missing_fields)
+    try:
+        gh.fetch_issue("a/b", 2)
+        assert False
+    except RuntimeError as e:
+        assert "missing" in str(e)
