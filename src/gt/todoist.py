@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 from collections.abc import Iterable
@@ -28,13 +29,18 @@ class TodoistClient:
         self._lib_client = None
         self._default_backend = "rest"
         self._last_backend: Optional[str] = None
-        try:
-            from todoist_api_python.api import TodoistAPI  # type: ignore
-
-            self._lib_client = TodoistAPI(self.token)
-            self._default_backend = "sdk"
-        except Exception as e:
-            log_debug(f"todoist-api-python unavailable, will use REST fallback: {e}")
+        use_sdk = True
+        if os.getenv("GT_DISABLE_TODOIST_SDK"):
+            use_sdk = False
+        if "todoist_api_python.api" in sys.modules:
+            use_sdk = True
+        if use_sdk:
+            try:
+                from todoist_api_python.api import TodoistAPI  # type: ignore
+                self._lib_client = TodoistAPI(self.token)
+                self._default_backend = "sdk"
+            except Exception as e:
+                log_debug(f"todoist-api-python unavailable, will use REST fallback: {e}")
 
     def add_task(
         self,
@@ -135,10 +141,6 @@ class TodoistClient:
         log_debug("Todoist backend (projects): rest")
         self._last_backend = "rest"
         import requests  # type: ignore
-
-    def last_backend(self) -> str:
-        return self._last_backend or self._default_backend
-
         headers = {"Authorization": f"Bearer {self.token}"}
         resp = requests.get("https://api.todoist.com/rest/v2/projects", headers=headers, timeout=20)
         if resp.status_code >= 400:
@@ -152,3 +154,6 @@ class TodoistClient:
                 if pid and name:
                     out.append({"id": str(pid), "name": str(name)})
         return out
+
+    def last_backend(self) -> str:
+        return self._last_backend or self._default_backend

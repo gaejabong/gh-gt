@@ -6,10 +6,10 @@ import sys
 from typing import Optional
 
 from . import __version__
-from .github import fetch_issue, resolve_repo
-from .keychain import save_token, unset_token, show_status, get_token
-from .config import get_default_project_id, set_default_project_id
-from .todoist import TodoistClient
+from . import github as gh
+from . import keychain as kc
+from . import config as cfg
+from . import todoist as td
 from .util import log_debug, strip_markdown, open_url
 
 def build_main_parser() -> argparse.ArgumentParser:
@@ -72,7 +72,7 @@ def run_auth(args: argparse.Namespace) -> int:
         else:
             save_target = args.save or "keychain"
 
-        ok, msg = save_token(token, where=save_target)
+        ok, msg = kc.save_token(token, where=save_target)
         print(msg)
         if ok and sys.stdin.isatty() and sys.stdout.isatty():
             # Offer to set default project now
@@ -87,11 +87,11 @@ def run_auth(args: argparse.Namespace) -> int:
 
 def run_config_project_interactive(clear: bool, *, show_backend: bool = False) -> int:
     if clear:
-        set_default_project_id(None)
+        cfg.set_default_project_id(None)
         print("default project cleared")
         return 0
     try:
-        client = TodoistClient()
+        client = td.TodoistClient()
         projects = client.list_projects()
         if show_backend:
             sys.stderr.write(f"Using Todoist {client.last_backend()}\n")
@@ -113,7 +113,7 @@ def run_config_project_interactive(clear: bool, *, show_backend: bool = False) -
                 i = int(choice)
                 if 1 <= i <= len(projects):
                     sel = projects[i - 1]
-                    set_default_project_id(sel["id"])
+                    cfg.set_default_project_id(sel["id"])
                     print(f"기본 프로젝트 설정: {sel['name']} ({sel['id']})")
                     return 0
             print("잘못된 입력입니다. 다시 시도하세요.")
@@ -162,8 +162,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        repo = resolve_repo(args.repo)
-        issue = fetch_issue(repo, args.number)
+        repo = gh.resolve_repo(args.repo)
+        issue = gh.fetch_issue(repo, args.number)
 
         body = issue.body or ""
         if args.strip_md and body:
@@ -182,7 +182,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             labels = issue.labels
 
         # Ensure token present; if missing and interactive, prompt and save
-        token = get_token()
+        token = kc.get_token()
         if not token and sys.stdin.isatty() and sys.stdout.isatty():
             import getpass
 
@@ -195,12 +195,12 @@ def main(argv: Optional[list[str]] = None) -> int:
             except EOFError:
                 choice = "k"
             target = "keychain" if choice in ("", "k", "keychain") else "file"
-            ok, msg = save_token(token, where=target)
+            ok, msg = kc.save_token(token, where=target)
             print(msg)
 
-        client = TodoistClient(token=token)
+        client = td.TodoistClient(token=token)
         # Default project if not provided
-        project_id = args.project_id or get_default_project_id()
+        project_id = args.project_id or cfg.get_default_project_id()
 
         task = client.add_task(
             content=content,
