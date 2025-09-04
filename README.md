@@ -11,14 +11,15 @@ gh extension install gaejabong/gh-gt
 ## Usage
 
 ```bash
-# From a repository directory
+# From a repository directory (single or multiple issues)
 gh gt 123
+gh gt 123 124 125
 
 # Specify repository explicitly
-gh gt 45 --repo owner/repo
+gh gt 45 46 --repo owner/repo
 
-# Options
-gh gt 123 --project-id 2293812345 --section-id 99887766 \
+# Options (applied to all issues)
+gh gt 123 124 --project-id 2293812345 --section-id 99887766 \
   --priority 3 --due "next Monday 9am" --labels-as-tags --strip-markdown --open
 ```
 
