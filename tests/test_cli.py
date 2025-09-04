@@ -40,6 +40,37 @@ def test_cli_creates_task_with_repo(monkeypatch, capsys):
     assert rc == 0
     assert "created: t1" in out
 
+def test_cli_creates_multiple_tasks(monkeypatch, capsys):
+    # Mock GitHub
+    import gt.github as gh
+
+    monkeypatch.setattr(gh, "resolve_repo", lambda repo: repo or "alice/proj")
+    monkeypatch.setattr(gh, "fetch_issue", lambda repo, n: Issue(number=n, title=f"Title {n}", body="Body", html_url=f"http://i/{n}"))
+
+    # Mock Todoist with counter
+    import gt.todoist as td
+
+    calls = {"n": 0}
+
+    class DummyClient:
+        def __init__(self, token=None):
+            pass
+
+        def add_task(self, **kwargs):
+            calls["n"] += 1
+            return td.TodoistTask(id=f"t{calls['n']}", content=kwargs["content"], url=f"http://t/{calls['n']}")
+
+        def last_backend(self):
+            return "sdk"
+
+    monkeypatch.setattr(td, "TodoistClient", DummyClient)
+
+    rc = cli.main(["101", "102", "103", "--repo", "alice/proj"])  # multiple numbers
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert calls["n"] == 3
+    assert out.count("created:") == 3
+
 
 def test_config_project_interactive(monkeypatch, capsys, tmp_path):
     # Redirect config file path

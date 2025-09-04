@@ -13,8 +13,8 @@ from . import todoist as td
 from .util import log_debug, strip_markdown, open_url
 
 def build_main_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="gh gt", description="Create a Todoist task from a GitHub issue")
-    p.add_argument("number", type=int, help="GitHub issue number")
+    p = argparse.ArgumentParser(prog="gh gt", description="Create Todoist task(s) from GitHub issue(s)")
+    p.add_argument("numbers", type=int, nargs="+", help="GitHub issue number(s)")
     p.add_argument("--repo", dest="repo", help="Use a specific repository owner/repo instead of cwd")
     p.add_argument("--project-id", dest="project_id")
     p.add_argument("--section-id", dest="section_id")
@@ -163,23 +163,6 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     try:
         repo = gh.resolve_repo(args.repo)
-        issue = gh.fetch_issue(repo, args.number)
-
-        body = issue.body or ""
-        if args.strip_md and body:
-            body = strip_markdown(body)
-
-        description = body.strip()
-        if description:
-            description += "\n\n" + issue.html_url
-        else:
-            description = issue.html_url
-
-        content = f"#{issue.number} {issue.title}"
-
-        labels = None
-        if args.labels_as_tags and issue.labels:
-            labels = issue.labels
 
         # Ensure token present; if missing and interactive, prompt and save
         token = kc.get_token()
@@ -199,26 +182,45 @@ def main(argv: Optional[list[str]] = None) -> int:
             print(msg)
 
         client = td.TodoistClient(token=token)
+        if args.verbose:
+            sys.stderr.write(f"Using Todoist {client.last_backend()}\n")
         # Default project if not provided
         project_id = args.project_id or cfg.get_default_project_id()
 
-        task = client.add_task(
-            content=content,
-            description=description,
-            project_id=project_id,
-            section_id=args.section_id,
-            priority=args.priority,
-            due_string=args.due,
-            labels=labels,
-        )
+        for num in args.numbers:
+            issue = gh.fetch_issue(repo, num)
 
-        if args.verbose:
-            sys.stderr.write(f"Using Todoist {client.last_backend()}\n")
-        print(f"created: {task.id} - {task.content}")
-        if task.url:
-            print(task.url)
-            if args.open_after:
-                open_url(task.url)
+            body = issue.body or ""
+            if args.strip_md and body:
+                body = strip_markdown(body)
+
+            description = body.strip()
+            if description:
+                description += "\n\n" + issue.html_url
+            else:
+                description = issue.html_url
+
+            content = f"#{issue.number} {issue.title}"
+
+            labels = None
+            if args.labels_as_tags and issue.labels:
+                labels = issue.labels
+
+            task = client.add_task(
+                content=content,
+                description=description,
+                project_id=project_id,
+                section_id=args.section_id,
+                priority=args.priority,
+                due_string=args.due,
+                labels=labels,
+            )
+
+            print(f"created: {task.id} - {task.content}")
+            if task.url:
+                print(task.url)
+                if args.open_after:
+                    open_url(task.url)
         return 0
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
