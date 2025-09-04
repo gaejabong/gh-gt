@@ -7,15 +7,22 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/.venv"
 REQ_FILE="$SCRIPT_DIR/requirements.txt"
+VENV_CREATED=0
 
-PYTHON_BIN="python3"
-if command -v python >/dev/null 2>&1; then
+PYTHON_BIN=""
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN="python3"
+elif command -v python >/dev/null 2>&1; then
   PYTHON_BIN="python"
+else
+  echo "[gh-gt] Error: python3 or python not found in PATH" >&2
+  exit 1
 fi
 
 if [ ! -d "$VENV_DIR" ]; then
   echo "[gh-gt] Creating virtual environment..." >&2
   "$PYTHON_BIN" -m venv "$VENV_DIR"
+  VENV_CREATED=1
 fi
 
 source "$VENV_DIR/bin/activate"
@@ -27,7 +34,30 @@ if [ -f "$REQ_FILE" ]; then
   }
 fi
 
+# If the Python ssl backend is LibreSSL or OpenSSL<1.1.1, urllib3 v2 warns/doesn't support.
+# In that case, pin urllib3 to <2 dynamically to keep compatibility.
+if [ "$VENV_CREATED" = "1" ]; then
+NEED_FALLBACK=$("$PYTHON_BIN" - <<'PY'
+import ssl, re
+v = getattr(ssl, "OPENSSL_VERSION", "")
+need = False
+if v.startswith("LibreSSL"):
+    need = True
+elif v.startswith("OpenSSL"):
+    m = re.search(r"OpenSSL\s+(\d+)\.(\d+)\.(\d+)", v)
+    if m:
+        maj, minor, patch = map(int, m.groups())
+        if (maj, minor, patch) < (1, 1, 1):
+            need = True
+print("1" if need else "0")
+PY
+)
+  if [ "$NEED_FALLBACK" = "1" ]; then
+    echo "[gh-gt] Detected LibreSSL or old OpenSSL; pinning urllib3<2 for compatibility" >&2
+    pip install --disable-pip-version-check -q 'urllib3<2' || true
+  fi
+fi
+
 export PYTHONPATH="$SCRIPT_DIR/src${PYTHONPATH+:$PYTHONPATH}"
 
 exec "$PYTHON_BIN" -m gt.cli "$@"
-
